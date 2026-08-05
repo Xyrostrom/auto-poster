@@ -1,0 +1,73 @@
+name: auto-post
+
+on:
+  schedule:
+    # 10:30 IST daily (GitHub cron is UTC). Shifted off :00 because the top of
+    # the hour is the busiest slot on shared runners and jobs get queued.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Comma separated: youtube,instagram"
+        default: "youtube,instagram"
+        required: false
+      dry_run:
+        description: "Pick + caption only, upload nothing"
+        type: boolean
+        default: false
+
+concurrency:
+  # Two overlapping runs would race on state/posted.json and double-post.
+  group: auto-post
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed to commit the updated state file
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Publish
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STAGING_REPO: ${{ vars.STAGING_REPO }}
+          CONTENT_CONTEXT: ${{ vars.CONTENT_CONTEXT }}
+          YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
+          GH_TOKEN: ${{ secrets.STAGING_TOKEN }}
+        run: |
+          python scripts/publish.py \
+            --platforms "${{ inputs.platforms || 'youtube,instagram' }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Commit updated state
+        if: always()
+        run: |
+          if git diff --quiet -- state/posted.json; then
+            echo "No state change to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/posted.json
+          git commit -m "chore: record post run [skip ci]"
+          # Another run may have pushed in the meantime.
+          git pull --rebase --autostash
+          git push
