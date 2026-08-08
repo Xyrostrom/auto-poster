@@ -51,11 +51,28 @@ jobs:
           STAGING_REPO: ${{ vars.STAGING_REPO }}
           CONTENT_CONTEXT: ${{ vars.CONTENT_CONTEXT }}
           YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
-          GH_TOKEN: ${{ secrets.STAGING_TOKEN }}
+          # NOT `GH_TOKEN`: that name is auto-read by the GitHub CLI and many
+          # actions, which would silently hand this PAT to any tool that shells
+          # out to `gh`.
+          STAGING_TOKEN: ${{ secrets.STAGING_TOKEN }}
+          # Inputs go through env, never interpolated into the shell below --
+          # `${{ }}` inside `run:` is a script-injection sink.
+          PLATFORMS: ${{ inputs.platforms || 'youtube,instagram' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
-          python scripts/publish.py \
-            --platforms "${{ inputs.platforms || 'youtube,instagram' }}" \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+          args=(--platforms "$PLATFORMS")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python scripts/publish.py "${args[@]}"
+
+      # __exit__ in stage_public.py covers the happy path, but it never runs if
+      # the job is cancelled or the runner dies mid-upload -- which would leave
+      # the video publicly downloadable on the staging repo indefinitely.
+      - name: Sweep staged media
+        if: always()
+        env:
+          STAGING_REPO: ${{ vars.STAGING_REPO }}
+          STAGING_TOKEN: ${{ secrets.STAGING_TOKEN }}
+        run: python scripts/stage_public.py --sweep
 
       - name: Commit updated state
         if: always()

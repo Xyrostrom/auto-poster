@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import uuid
 
 import requests
 
@@ -79,8 +80,11 @@ class PublicAsset:
             )
 
         release_id = _ensure_release(self.token, self.repo)
-        # Asset names must be unique within a release.
-        name = f"{self.path.stem[:60]}-{abs(hash(self.path.name)) % 10**8}{self.path.suffix}"
+        # Asset names must be unique within a release. uuid4 rather than hash():
+        # str hashing is salted per process (PYTHONHASHSEED), so a name built
+        # from it can never be recomputed to find an asset stranded by an
+        # earlier crashed run.
+        name = f"{self.path.stem[:60]}-{uuid.uuid4().hex[:8]}{self.path.suffix}"
 
         with self.path.open("rb") as fh:
             r = requests.post(
@@ -112,3 +116,56 @@ class PublicAsset:
         except requests.RequestException as e:
             # Never mask the real error from the body of the with-block.
             LOG.warning("Could not clean up staged asset %s: %s", self.asset_id, e)
+
+
+def sweep(token: str, repo: str) -> int:
+    """Delete every asset on the staging release.
+
+    __exit__ handles the happy path, but it never runs if the process is killed
+    outright -- job timeout, cancelled workflow, runner OOM. Without this a
+    video stays publicly downloadable on the staging repo forever. Run it as an
+    `if: always()` step so cleanup survives the thing that killed the upload.
+    """
+    r = requests.get(f"{API}/repos/{repo}/releases/tags/{STAGING_TAG}",
+                     headers=_headers(token), timeout=30)
+    if r.status_code == 404:
+        LOG.info("No staging release on %s; nothing to sweep.", repo)
+        return 0
+    if r.status_code != 200:
+        LOG.warning("Could not read staging release (%s): %s", r.status_code, r.text[:200])
+        return 0
+
+    assets = r.json().get("assets", [])
+    removed = 0
+    for a in assets:
+        d = requests.delete(f"{API}/repos/{repo}/releases/assets/{a['id']}",
+                            headers=_headers(token), timeout=30)
+        if d.status_code in (204, 404):
+            removed += 1
+            LOG.info("Swept stranded asset %s (%s)", a["name"], a["id"])
+        else:
+            LOG.warning("Could not sweep asset %s (%s)", a["name"], d.status_code)
+    if not assets:
+        LOG.info("Staging release clean; nothing stranded.")
+    return removed
+
+
+if __name__ == "__main__":
+    import argparse
+    import os
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    ap = argparse.ArgumentParser(description="Staging-repo asset maintenance.")
+    ap.add_argument("--sweep", action="store_true",
+                    help="delete all assets on the staging release")
+    args = ap.parse_args()
+    if not args.sweep:
+        ap.error("nothing to do; pass --sweep")
+
+    tok = os.environ.get("STAGING_TOKEN")
+    rep = os.environ.get("STAGING_REPO")
+    if not tok or not rep:
+        # A cleanup step must never fail the job over missing config.
+        LOG.warning("STAGING_TOKEN/STAGING_REPO not set; skipping sweep.")
+        raise SystemExit(0)
+    sweep(tok, rep)

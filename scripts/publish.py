@@ -13,6 +13,7 @@ import argparse
 import datetime as dt
 import logging
 import pathlib
+import re
 import tempfile
 
 import caption as caption_mod
@@ -30,6 +31,24 @@ from common import (
 from stage_public import PublicAsset
 
 LOG = logging.getLogger("autoposter")
+
+
+# Long opaque blobs in an API error body are almost always credentials --
+# bearer tokens, refresh tokens, signed URL query strings. state/posted.json is
+# committed to the repo every run, so anything landing in it is permanent.
+_SECRETISH = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]{20,}"
+    r"|ya29\.[\w.\-]{20,}"
+    r"|1//[\w.\-]{20,}"
+    r"|IGQ[\w.\-]{20,}"
+    r"|EA[A-Za-z0-9]{40,}"
+    r"|(?i:(?:access_token|refresh_token|client_secret|token|signature)=)[^&\s\"']+)"
+)
+
+
+def _scrub(err: object, limit: int = 400) -> str:
+    """Redact credential-shaped substrings, then truncate for storage."""
+    return _SECRETISH.sub("[REDACTED]", str(err))[:limit]
 
 
 def pick(videos: list[dict], state: dict, platforms: list[str]) -> dict | None:
@@ -108,15 +127,15 @@ def main() -> int:
                 plat["youtube"] = {"ok": True, "id": vid, "at": now,
                                    "url": f"https://youtu.be/{vid}"}
             except SystemExit as e:
-                LOG.error("YouTube failed: %s", e)
-                plat["youtube"] = {"ok": False, "error": str(e)[:400], "at": now}
+                LOG.error("YouTube failed: %s", _scrub(e))
+                plat["youtube"] = {"ok": False, "error": _scrub(e), "at": now}
                 failures.append("youtube")
 
         if "instagram" in platforms and not plat.get("instagram", {}).get("ok"):
             try:
                 staging_repo = env("STAGING_REPO")
-                gh_token = env("GH_TOKEN")
-                with PublicAsset(gh_token, staging_repo, local) as asset:
+                staging_token = env("STAGING_TOKEN")
+                with PublicAsset(staging_token, staging_repo, local) as asset:
                     media_id = post_instagram.post_reel(
                         env("IG_USER_ID"),
                         env("IG_ACCESS_TOKEN"),
@@ -125,8 +144,8 @@ def main() -> int:
                     )
                 plat["instagram"] = {"ok": True, "id": media_id, "at": now}
             except SystemExit as e:
-                LOG.error("Instagram failed: %s", e)
-                plat["instagram"] = {"ok": False, "error": str(e)[:400], "at": now}
+                LOG.error("Instagram failed: %s", _scrub(e))
+                plat["instagram"] = {"ok": False, "error": _scrub(e), "at": now}
                 failures.append("instagram")
 
     save_state(state)
