@@ -1,3 +1,20 @@
 {
-  "posted": {}
+  "posted": {
+    "1QyiZYCRVMXAK0xNx9G4cF75mo09W4qA-": {
+      "name": "samaywastingsamay_reel_10_3_2023_3_21_41 PM3205342649539050996.mp4",
+      "platforms": {
+        "instagram": {
+          "at": "2026-08-11T05:53:58.732492+00:00",
+          "error": "Missing required environment variable: STAGING_REPO\nSet it as a GitHub Actions secret (see README.md).",
+          "ok": false
+        },
+        "youtube": {
+          "at": "2026-08-11T05:53:58.732492+00:00",
+          "id": "BMhDgLXc5xk",
+          "ok": true,
+          "url": "https://youtu.be/BMhDgLXc5xk"
+        }
+      }
+    }
+  }
 }
