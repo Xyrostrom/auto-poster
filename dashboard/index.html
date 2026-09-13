@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>auto-poster settings</title>
+<script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.13/dist/browsers/sodium.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280;
+    --border: #e3e6ea; --accent: #2563eb; --ok: #16a34a; --bad: #dc2626;
+    --warn: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --card:#1c1f24; --text:#eceef0; --muted:#9aa1ab; --border:#2b2f36; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding-block:24px; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding-inline: 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+          padding: 18px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; margin: 0 0 12px; }
+  label { display:block; font-size:12.5px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=password], input[type=number], select {
+    width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13.5px;
+  }
+  .row { display:flex; gap:10px; align-items:center; }
+  .row label { margin: 0; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; white-space:nowrap; }
+  .badge.ok { background: rgba(22,163,74,.15); color: var(--ok); }
+  .badge.bad { background: rgba(220,38,38,.12); color: var(--bad); }
+  .field-head { display:flex; justify-content:space-between; align-items:baseline; }
+  button { cursor:pointer; border:none; border-radius:7px; padding:9px 14px; font-size:13.5px;
+           font-weight:600; background: var(--accent); color:#fff; }
+  button.secondary { background: transparent; color: var(--text); border:1px solid var(--border); font-weight:500; }
+  button:disabled { opacity:.5; cursor:default; }
+  .actions { display:flex; gap:10px; margin-top:14px; }
+  .hint { color: var(--muted); font-size:12px; margin-top:6px; }
+  .log { font-family: ui-monospace, monospace; font-size:12px; white-space:pre-wrap;
+         background: var(--bg); border:1px solid var(--border); border-radius:7px;
+         padding:10px; max-height:180px; overflow:auto; }
+  .checks { display:flex; gap:16px; }
+  .checks label { display:flex; gap:6px; align-items:center; margin:0; color: var(--text); }
+  .health { display:flex; align-items:center; gap:10px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.success { background: var(--ok); }
+  .dot.failure, .dot.startup_failure { background: var(--bad); }
+  .dot.running { background: var(--warn); }
+  a { color: var(--accent); }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>auto-poster settings</h1>
+  <p class="sub">Reads and writes GitHub Secrets/Variables directly from this browser tab using your token below. Nothing here is sent anywhere except <code>api.github.com</code>.</p>
+
+  <div class="card">
+    <h2>Connect</h2>
+    <label for="owner">Repo</label>
+    <div class="row">
+      <input id="owner" type="text" value="Xyrostrom" style="max-width:160px">
+      <span>/</span>
+      <input id="repo" type="text" value="auto-poster">
+    </div>
+    <label for="pat">Fine-grained personal access token</label>
+    <input id="pat" type="password" placeholder="github_pat_...">
+    <div class="hint">
+      Create one at github.com/settings/personal-access-tokens with access to this repo only, and
+      permissions: <b>Secrets: Read and write</b>, <b>Variables: Read and write</b>, <b>Actions: Read and write</b>.
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label style="margin:0"><input type="checkbox" id="remember"> Remember on this device</label>
+    </div>
+    <div class="actions">
+      <button id="connect">Connect</button>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+
+    <div class="card">
+      <h2>Run status</h2>
+      <div class="health">
+        <span class="dot" id="healthDot"></span>
+        <span id="healthText">loading…</span>
+      </div>
+      <div class="actions">
+        <button class="secondary" id="refreshHealth">Refresh</button>
+        <button id="runNow">Run now</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Schedule &amp; platforms</h2>
+      <label for="postHour">Post time (UTC hour)</label>
+      <select id="postHour"></select>
+      <div class="hint" id="istHint"></div>
+
+      <label>Platforms enabled for scheduled runs</label>
+      <div class="checks">
+        <label><input type="checkbox" id="platYoutube"> YouTube</label>
+        <label><input type="checkbox" id="platInstagram"> Instagram</label>
+      </div>
+
+      <label for="ytPrivacy">YouTube upload privacy</label>
+      <select id="ytPrivacy">
+        <option value="public">public</option>
+        <option value="unlisted">unlisted</option>
+        <option value="private">private</option>
+      </select>
+
+      <label for="contentContext">Content context (improves captions)</label>
+      <input id="contentContext" type="text" placeholder="e.g. daily cooking tips, 30-60s clips">
+
+      <label for="stagingRepo">Staging repo (public, holds videos ~60s for Instagram)</label>
+      <input id="stagingRepo" type="text" placeholder="Xyrostrom/auto-poster-media">
+
+      <div class="actions">
+        <button id="saveVars">Save</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Secrets</h2>
+      <p class="hint">Values are encrypted in this browser before being sent to GitHub — nobody, including this dashboard, can read them back. Leave a field blank to keep its current value.</p>
+      <div id="secretFields"></div>
+      <div class="actions">
+        <button id="saveSecrets">Save secrets</button>
+      </div>
+    </div>
+
+    <div class="log" id="log" hidden></div>
+  </div>
+</div>
+
+<script>
+const SECRET_FIELDS = [
+  ["GOOGLE_CLIENT_ID", "Google OAuth client ID"],
+  ["GOOGLE_CLIENT_SECRET", "Google OAuth client secret"],
+  ["GOOGLE_REFRESH_TOKEN", "Google refresh token (from scripts/auth_setup.py)"],
+  ["DRIVE_FOLDER_ID", "Drive folder ID"],
+  ["IG_USER_ID", "Instagram business account ID"],
+  ["IG_ACCESS_TOKEN", "Instagram long-lived access token"],
+  ["STAGING_TOKEN", "Fine-grained PAT for the staging repo (Contents: read/write)"],
+  ["ANTHROPIC_API_KEY", "Anthropic API key (optional, improves captions)"],
+];
+
+let sodiumReady = null;
+let publicKeyCache = null;
+let existingSecrets = new Set();
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+
+function log(msg, isError) {
+  logEl.hidden = false;
+  const line = `${new Date().toLocaleTimeString()}  ${msg}`;
+  logEl.textContent = line + "\n" + logEl.textContent;
+  if (isError) console.error(msg); else console.log(msg);
+}
+
+function creds() {
+  return { owner: $("owner").value.trim(), repo: $("repo").value.trim(), pat: $("pat").value.trim() };
+}
+
+async function gh(path, opts = {}) {
+  const { pat } = creds();
+  const res = await fetch(`https://api.github.com${path}`, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${pat}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(opts.body ? { "Content-Type": "application/json" } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  return res;
+}
+
+function buildSecretFields() {
+  const wrap = $("secretFields");
+  wrap.innerHTML = "";
+  for (const [name, desc] of SECRET_FIELDS) {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <div class="field-head">
+        <label style="margin-top:12px">${name}</label>
+        <span class="badge" id="badge-${name}">…</span>
+      </div>
+      <input type="password" id="secret-${name}" placeholder="${desc} — leave blank to keep unchanged">
+    `;
+    wrap.appendChild(div);
+  }
+}
+
+function setBadge(name, isSet) {
+  const el = $(`badge-${name}`);
+  if (!el) return;
+  el.textContent = isSet ? "configured" : "not set";
+  el.className = "badge " + (isSet ? "ok" : "bad");
+}
+
+async function loadSecretsList() {
+  const { owner, repo } = creds();
+  const res = await gh(`/repos/${owner}/${repo}/actions/secrets?per_page=100`);
+  if (!res.ok) { log(`Could not list secrets (${res.status})`, true); return; }
+  const data = await res.json();
+  existingSecrets = new Set((data.secrets || []).map((s) => s.name));
+  for (const [name] of SECRET_FIELDS) setBadge(name, existingSecrets.has(name));
+}
+
+async function loadVariables() {
+  const { owner, repo } = creds();
+  const res = await gh(`/repos/${owner}/${repo}/actions/variables?per_page=100`);
+  if (!res.ok) { log(`Could not load variables (${res.status})`, true); return; }
+  const data = await res.json();
+  const vars = Object.fromEntries((data.variables || []).map((v) => [v.name, v.value]));
+
+  $("postHour").value = vars.POST_HOUR_UTC ?? "5";
+  $("ytPrivacy").value = vars.YT_PRIVACY ?? "public";
+  $("contentContext").value = vars.CONTENT_CONTEXT ?? "";
+  $("stagingRepo").value = vars.STAGING_REPO ?? "";
+  const platforms = (vars.PLATFORMS ?? "youtube").split(",").map((p) => p.trim());
+  $("platYoutube").checked = platforms.includes("youtube");
+  $("platInstagram").checked = platforms.includes("instagram");
+  updateIstHint();
+}
+
+function updateIstHint() {
+  const h = parseInt($("postHour").value, 10);
+  const istH = (h + 5) % 24, istM = 30;
+  $("istHint").textContent = `= ${String(istH).padStart(2, "0")}:${istM} IST`;
+}
+
+async function upsertVariable(name, value) {
+  const { owner, repo } = creds();
+  let res = await gh(`/repos/${owner}/${repo}/actions/variables/${name}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, value }),
+  });
+  if (res.status === 404) {
+    res = await gh(`/repos/${owner}/${repo}/actions/variables`, {
+      method: "POST",
+      body: JSON.stringify({ name, value }),
+    });
+  }
+  if (!res.ok) throw new Error(`${name}: ${res.status} ${await res.text()}`);
+}
+
+async function getPublicKey() {
+  if (publicKeyCache) return publicKeyCache;
+  const { owner, repo } = creds();
+  const res = await gh(`/repos/${owner}/${repo}/actions/secrets/public-key`);
+  if (!res.ok) throw new Error(`public key fetch failed: ${res.status}`);
+  publicKeyCache = await res.json();
+  return publicKeyCache;
+}
+
+async function setSecret(name, value) {
+  await sodiumReady;
+  const { owner, repo } = creds();
+  const { key, key_id } = await getPublicKey();
+  const messageBytes = sodium.from_string(value);
+  const keyBytes = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
+  const sealed = sodium.crypto_box_seal(messageBytes, keyBytes);
+  const encrypted_value = sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL);
+  const res = await gh(`/repos/${owner}/${repo}/actions/secrets/${name}`, {
+    method: "PUT",
+    body: JSON.stringify({ encrypted_value, key_id }),
+  });
+  if (!res.ok) throw new Error(`${name}: ${res.status} ${await res.text()}`);
+}
+
+async function loadHealth() {
+  const { owner, repo } = creds();
+  const dot = $("healthDot"), text = $("healthText");
+  dot.className = "dot";
+  text.textContent = "loading…";
+  const res = await gh(`/repos/${owner}/${repo}/actions/workflows/repost.yml/runs?per_page=1`);
+  if (!res.ok) { text.textContent = `couldn't load (${res.status})`; return; }
+  const data = await res.json();
+  const run = (data.workflow_runs || [])[0];
+  if (!run) { text.textContent = "no runs yet"; return; }
+  const state = run.status === "completed" ? run.conclusion : run.status;
+  dot.classList.add(state || "");
+  const when = new Date(run.run_started_at).toLocaleString();
+  text.innerHTML = `${state} — ${when} · <a href="${run.html_url}" target="_blank" rel="noopener">view run</a>`;
+}
+
+async function runNow() {
+  const { owner, repo } = creds();
+  const res = await gh(`/repos/${owner}/${repo}/actions/workflows/repost.yml/dispatches`, {
+    method: "POST",
+    body: JSON.stringify({ ref: "main" }),
+  });
+  if (res.status === 204) {
+    log("Triggered a run.");
+    setTimeout(loadHealth, 4000);
+  } else {
+    log(`Trigger failed: ${res.status} ${await res.text()}`, true);
+  }
+}
+
+async function connect() {
+  const { owner, repo, pat } = creds();
+  if (!owner || !repo || !pat) { log("Fill in owner, repo and token first.", true); return; }
+  if ($("remember").checked) {
+    localStorage.setItem("ap_owner", owner);
+    localStorage.setItem("ap_repo", repo);
+    localStorage.setItem("ap_pat", pat);
+  } else {
+    sessionStorage.setItem("ap_owner", owner);
+    sessionStorage.setItem("ap_repo", repo);
+    sessionStorage.setItem("ap_pat", pat);
+  }
+  const res = await gh(`/repos/${owner}/${repo}`);
+  if (!res.ok) {
+    log(`Could not reach ${owner}/${repo} with this token (${res.status}). Check the token's repo access and permissions.`, true);
+    return;
+  }
+  $("app").hidden = false;
+  buildSecretFields();
+  await Promise.all([loadVariables(), loadSecretsList(), loadHealth()]);
+  log("Connected.");
+}
+
+for (let h = 0; h < 24; h++) {
+  const opt = document.createElement("option");
+  opt.value = h; opt.textContent = String(h).padStart(2, "0") + ":00 UTC";
+  $("postHour").appendChild(opt);
+}
+
+$("postHour").addEventListener("change", updateIstHint);
+$("connect").addEventListener("click", () => connect().catch((e) => log(String(e), true)));
+$("refreshHealth").addEventListener("click", () => loadHealth().catch((e) => log(String(e), true)));
+$("runNow").addEventListener("click", () => runNow().catch((e) => log(String(e), true)));
+
+$("saveVars").addEventListener("click", async () => {
+  const platforms = [
+    $("platYoutube").checked ? "youtube" : null,
+    $("platInstagram").checked ? "instagram" : null,
+  ].filter(Boolean).join(",");
+  try {
+    await Promise.all([
+      upsertVariable("POST_HOUR_UTC", $("postHour").value),
+      upsertVariable("YT_PRIVACY", $("ytPrivacy").value),
+      upsertVariable("CONTENT_CONTEXT", $("contentContext").value),
+      upsertVariable("STAGING_REPO", $("stagingRepo").value),
+      upsertVariable("PLATFORMS", platforms || "youtube"),
+    ]);
+    log("Saved schedule & platform settings.");
+  } catch (e) {
+    log(`Save failed: ${e.message}`, true);
+  }
+});
+
+$("saveSecrets").addEventListener("click", async () => {
+  const toSet = SECRET_FIELDS
+    .map(([name]) => [name, $(`secret-${name}`).value])
+    .filter(([, value]) => value.trim() !== "");
+  if (toSet.length === 0) { log("No secret fields filled in — nothing to save."); return; }
+  let ok = 0;
+  for (const [name, value] of toSet) {
+    try {
+      await setSecret(name, value);
+      $(`secret-${name}`).value = "";
+      setBadge(name, true);
+      ok++;
+    } catch (e) {
+      log(`${name} failed: ${e.message}`, true);
+    }
+  }
+  if (ok) log(`Saved ${ok} secret(s).`);
+});
+
+sodiumReady = new Promise((resolve) => {
+  const check = () => (window.sodium && sodium.ready) ? sodium.ready.then(resolve) : setTimeout(check, 50);
+  check();
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  const o = localStorage.getItem("ap_owner") || sessionStorage.getItem("ap_owner");
+  const r = localStorage.getItem("ap_repo") || sessionStorage.getItem("ap_repo");
+  const p = localStorage.getItem("ap_pat") || sessionStorage.getItem("ap_pat");
+  if (o) $("owner").value = o;
+  if (r) $("repo").value = r;
+  if (p) { $("pat").value = p; $("remember").checked = !!localStorage.getItem("ap_pat"); }
+});
+</script>
+</body>
+</html>
