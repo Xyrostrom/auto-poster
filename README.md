@@ -54,9 +54,24 @@ You need a long-lived token with `instagram_content_publish`,
 > Long-lived IG tokens expire after **60 days**. Refresh it before then or the
 > Instagram leg starts failing silently while YouTube keeps working.
 
-### 3. Secrets
+### 3. Secrets and variables
 
-Repo → Settings → Secrets and variables → Actions.
+Open `dashboard/index.html` (double-click it, or serve it with
+`python -m http.server` / GitHub Pages) and paste in a fine-grained PAT
+scoped to this repo with **Secrets: Read and write**, **Variables: Read
+and write**, **Actions: Read and write**. It's a single static page with
+no backend — it talks straight from your browser to `api.github.com`, so
+your token never passes through anything but GitHub and this tab.
+
+From there you can:
+- Set every secret below (encrypted in-browser before it's sent, using the
+  same libsodium sealed-box flow `gh secret set` uses — nobody can read
+  them back afterwards, including this page)
+- Edit the posting hour, enabled platforms, YouTube privacy, content
+  niche, and staging repo without touching any YAML
+- See the latest run's status and trigger a run on demand
+
+Or set things by hand under Repo → Settings → Secrets and variables → Actions:
 
 | Secret | What it is |
 |---|---|
@@ -74,9 +89,15 @@ Repo → Settings → Secrets and variables → Actions.
 | `STAGING_REPO` | e.g. `Xyrostrom/auto-poster-media` (must be public) |
 | `CONTENT_CONTEXT` | one line describing your niche, improves captions |
 | `YT_PRIVACY` | `public`, `unlisted`, or `private` (default `public`) |
+| `PLATFORMS` | comma separated, e.g. `youtube` or `youtube,instagram` (default `youtube,instagram`) |
+| `POST_HOUR_UTC` | hour (0-23, UTC) the daily post runs at (default `5`, i.e. 10:30 IST) |
 
 Use a **fine-grained PAT** for `STAGING_TOKEN`, scoped to the staging repo with
 Contents: read/write. It does not need access to anything else.
+
+Instagram is optional: until `STAGING_REPO`, `STAGING_TOKEN`, `IG_USER_ID`,
+and `IG_ACCESS_TOKEN` are all set, runs skip it and only post to YouTube —
+they won't fail because of it.
 
 ## Running it
 
@@ -92,7 +113,9 @@ Then for real:
 gh workflow run auto-post
 ```
 
-Schedule lives in `.github/workflows/repost.yml` (default 10:30 IST daily).
+The workflow runs every hour and only actually posts during the hour set by
+`POST_HOUR_UTC` (default 5 UTC / 10:30 IST) — change that variable from the
+dashboard or the repo Settings page, no YAML edit needed.
 
 ## State
 
