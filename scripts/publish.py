@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import logging
+import os
 import pathlib
 import re
 import tempfile
@@ -32,6 +33,11 @@ from stage_public import PublicAsset
 
 LOG = logging.getLogger("autoposter")
 
+# Secrets/vars Instagram needs. Until every one of these is set, Instagram
+# is "not configured yet" rather than "broken" -- it should be skipped
+# quietly instead of failing the job on every single run.
+INSTAGRAM_REQUIRED_ENV = ("STAGING_REPO", "STAGING_TOKEN", "IG_USER_ID", "IG_ACCESS_TOKEN")
+
 
 # Long opaque blobs in an API error body are almost always credentials --
 # bearer tokens, refresh tokens, signed URL query strings. state/posted.json is
@@ -49,6 +55,10 @@ _SECRETISH = re.compile(
 def _scrub(err: object, limit: int = 400) -> str:
     """Redact credential-shaped substrings, then truncate for storage."""
     return _SECRETISH.sub("[REDACTED]", str(err))[:limit]
+
+
+def _instagram_configured() -> bool:
+    return all(os.environ.get(name) for name in INSTAGRAM_REQUIRED_ENV)
 
 
 def pick(videos: list[dict], state: dict, platforms: list[str]) -> dict | None:
@@ -71,7 +81,21 @@ def main() -> int:
     args = ap.parse_args()
 
     platforms = [p.strip() for p in args.platforms.split(",") if p.strip()]
+
+    if "instagram" in platforms and not _instagram_configured():
+        missing = [n for n in INSTAGRAM_REQUIRED_ENV if not os.environ.get(n)]
+        LOG.info(
+            "Instagram not configured yet (missing %s) -- skipping this run, "
+            "not counting it as a failure.",
+            ", ".join(missing),
+        )
+        platforms = [p for p in platforms if p != "instagram"]
+
     LOG.info("Enabled platforms: %s%s", platforms, "  (DRY RUN)" if args.dry_run else "")
+
+    if not platforms:
+        LOG.warning("No platforms enabled. Nothing to do.")
+        return 0
 
     folder_id = env("DRIVE_FOLDER_ID")
     niche = env("CONTENT_CONTEXT", required=False, default="")
