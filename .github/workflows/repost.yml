@@ -2,9 +2,11 @@ name: auto-post
 
 on:
   schedule:
-    # 10:30 IST daily (GitHub cron is UTC). Shifted off :00 because the top of
-    # the hour is the busiest slot on shared runners and jobs get queued.
-    - cron: "0 5 * * *"
+    # Runs every hour; the "Gate" step below only lets Publish proceed
+    # during the hour set by the POST_HOUR_UTC repo variable (default 5 UTC
+    # = 10:30 IST). Change POST_HOUR_UTC from the dashboard, no YAML edit
+    # needed.
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       platforms:
@@ -30,6 +32,21 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Gate on configured post hour
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          want="${{ vars.POST_HOUR_UTC || '5' }}"
+          now="$(date -u +%-H)"
+          if [ "$now" = "$want" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
@@ -40,6 +57,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Publish
+        if: steps.gate.outputs.run == 'true'
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -57,7 +75,7 @@ jobs:
           STAGING_TOKEN: ${{ secrets.STAGING_TOKEN }}
           # Inputs go through env, never interpolated into the shell below --
           # `${{ }}` inside `run:` is a script-injection sink.
-          PLATFORMS: ${{ inputs.platforms || 'youtube,instagram' }}
+          PLATFORMS: ${{ inputs.platforms || vars.PLATFORMS || 'youtube,instagram' }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
           args=(--platforms "$PLATFORMS")
