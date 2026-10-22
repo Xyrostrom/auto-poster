@@ -75,6 +75,15 @@ Repo → Settings → Secrets and variables → Actions.
 | `CONTENT_CONTEXT` | one line describing your niche, improves captions |
 | `YT_PRIVACY` | `public`, `unlisted`, or `private` (default `public`) |
 
+> **YouTube API audit:** videos uploaded through the API from an *unverified*
+> Google Cloud project are forced to **private**, whatever `YT_PRIVACY` says.
+> To post publicly, submit the project for the
+> [YouTube API Services audit](https://support.google.com/youtube/contact/yt_api_form).
+> Until it's approved, expect private uploads.
+>
+> **Instagram token:** the long-lived `IG_ACCESS_TOKEN` expires after about 60 days
+> and nothing here refreshes it. Set a reminder to rotate it.
+
 Use a **fine-grained PAT** for `STAGING_TOKEN`, scoped to the staging repo with
 Contents: read/write. It does not need access to anything else.
 
@@ -92,7 +101,7 @@ Then for real:
 gh workflow run auto-post
 ```
 
-Schedule lives in `.github/workflows/repost.yml` (default 10:30 IST daily).
+Schedule lives in `.github/workflows/repost.yml` (default 10:37 IST daily, `7 5 * * *` UTC).
 
 ## State
 

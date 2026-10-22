@@ -10,8 +10,32 @@ import time
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 LOG = logging.getLogger("autoposter")
+
+
+def _make_session() -> requests.Session:
+    """Shared session. Retries transient failures (429/5xx, connection resets)
+    with backoff -- but only for idempotent methods. Uploads and publishes are
+    POST/PUT and are never blindly replayed: a replay can mean a double post."""
+    retry = Retry(
+        total=4,
+        connect=4,
+        backoff_factor=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET", "HEAD", "DELETE"}),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    s = requests.Session()
+    adapter = HTTPAdapter(max_retries=retry)
+    s.mount("https://", adapter)
+    return s
+
+
+http = _make_session()
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STATE_PATH = ROOT / "state" / "posted.json"
@@ -19,7 +43,8 @@ STATE_PATH = ROOT / "state" / "posted.json"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 DRIVE_API = "https://www.googleapis.com/drive/v3"
 YOUTUBE_UPLOAD = "https://www.googleapis.com/upload/youtube/v3/videos"
-GRAPH_API = "https://graph.facebook.com/v21.0"
+# v21.0 is retired 2027-01-21. Overridable so a future bump needs no code change.
+GRAPH_API = f"https://graph.facebook.com/{os.environ.get('GRAPH_API_VERSION') or 'v26.0'}"
 
 VIDEO_MIMES = {
     "video/mp4",
@@ -84,7 +109,8 @@ def google_access_token() -> str:
     One Google account covers both Drive (read the source folder) and
     YouTube (upload), so a single refresh token with both scopes is enough.
     """
-    resp = requests.post(
+    # Token refresh is safe to replay; connection errors are retried by `http`.
+    resp = http.post(
         GOOGLE_TOKEN_URL,
         data={
             "client_id": env("GOOGLE_CLIENT_ID"),
@@ -131,7 +157,7 @@ def list_drive_videos(token: str, folder_id: str) -> list[dict[str, Any]]:
         if page_token:
             params["pageToken"] = page_token
 
-        resp = requests.get(f"{DRIVE_API}/files", headers=gheaders(token), params=params, timeout=60)
+        resp = http.get(f"{DRIVE_API}/files", headers=gheaders(token), params=params, timeout=60)
         if resp.status_code != 200:
             raise SystemExit(f"Drive list failed ({resp.status_code}): {resp.text[:400]}")
 
@@ -146,10 +172,16 @@ def list_drive_videos(token: str, folder_id: str) -> list[dict[str, Any]]:
     return videos
 
 
-def download_drive_file(token: str, file_id: str, dest: pathlib.Path) -> pathlib.Path:
+def download_drive_file(token: str, file_id: str, dest: pathlib.Path,
+                        root: pathlib.Path | None = None) -> pathlib.Path:
     """Stream a Drive file to disk. Streams so a 500MB video never lands in RAM."""
+    # Defence in depth: callers must sanitise the name, but never write outside
+    # `root` (an attacker-named Drive file could otherwise overwrite a script
+    # that a later workflow step runs with secrets in its environment).
+    if root is not None and not dest.resolve().is_relative_to(root.resolve()):
+        raise SystemExit(f"Refusing download path outside {root}: {dest!r}")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(
+    with http.get(
         f"{DRIVE_API}/files/{file_id}",
         headers=gheaders(token),
         params={"alt": "media", "supportsAllDrives": "true"},

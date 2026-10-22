@@ -2,9 +2,9 @@ name: auto-post
 
 on:
   schedule:
-    # 10:30 IST daily (GitHub cron is UTC). Shifted off :00 because the top of
-    # the hour is the busiest slot on shared runners and jobs get queued.
-    - cron: "0 5 * * *"
+    # 05:07 UTC = 10:37 IST daily. Off :00 because the top of the hour is the
+    # busiest slot on shared runners and scheduled jobs get delayed or dropped.
+    - cron: "7 5 * * *"
   workflow_dispatch:
     inputs:
       platforms:
@@ -31,6 +31,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Don't leave the write-scoped GITHUB_TOKEN in .git/config while pip
+          # packages and our scripts run; only the commit step gets it.
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -40,6 +44,8 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Publish
+        # Leave time inside the 45-minute job for the sweep and state commit.
+        timeout-minutes: 35
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -75,7 +81,9 @@ jobs:
         run: python scripts/stage_public.py --sweep
 
       - name: Commit updated state
-        if: always()
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet -- state/posted.json; then
             echo "No state change to commit."
@@ -85,6 +93,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add state/posted.json
           git commit -m "chore: record post run [skip ci]"
-          # Another run may have pushed in the meantime.
-          git pull --rebase --autostash
-          git push
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Another run (or you) may have pushed in the meantime; losing this
+          # commit would re-post the same video tomorrow, so retry.
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin main && git push origin HEAD:main && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error::Could not push state/posted.json after 3 attempts"
+          exit 1

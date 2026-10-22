@@ -9,6 +9,8 @@ the refresh token you paste into the GOOGLE_REFRESH_TOKEN secret.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import http.server
 import secrets
 import threading
@@ -20,7 +22,7 @@ import requests
 AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN = "https://oauth2.googleapis.com/token"
 PORT = 8765
-REDIRECT = f"http://localhost:{PORT}/"
+REDIRECT = f"http://127.0.0.1:{PORT}/"
 
 SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
@@ -28,19 +30,29 @@ SCOPES = [
 ]
 
 _code: str | None = None
+_error: str | None = None
+_done = threading.Event()
 _state = secrets.token_urlsafe(16)
+# PKCE: binds the code to this process even if the redirect is intercepted.
+_verifier = secrets.token_urlsafe(64)
+_challenge = base64.urlsafe_b64encode(
+    hashlib.sha256(_verifier.encode()).digest()
+).rstrip(b"=").decode()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
-        global _code
+        global _code, _error
         qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         if qs.get("state", [""])[0] != _state:
+            # Ignore stray requests (e.g. /favicon.ico) rather than aborting.
             self.send_response(400)
             self.end_headers()
             self.wfile.write(b"State mismatch - possible CSRF. Start over.")
             return
         _code = qs.get("code", [None])[0]
+        _error = qs.get("error", [None])[0]
+        _done.set()
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
@@ -63,21 +75,28 @@ def main() -> None:
         # Without prompt=consent Google omits refresh_token on re-authorisation.
         "prompt": "consent",
         "state": _state,
+        "code_challenge": _challenge,
+        "code_challenge_method": "S256",
     })
 
-    server = http.server.HTTPServer(("localhost", PORT), Handler)
+    # Bind to loopback only, never all interfaces.
+    server = http.server.HTTPServer(("127.0.0.1", PORT), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     url = f"{AUTH}?{params}"
     print(f"\nOpening consent screen. If it does not open, visit:\n{url}\n")
     webbrowser.open(url)
 
-    while _code is None:
-        pass
+    got = _done.wait(timeout=300)
     server.shutdown()
+    if not got:
+        raise SystemExit("Timed out after 5 minutes waiting for the OAuth redirect.")
+    if _error or not _code:
+        raise SystemExit(f"Consent was not granted: {_error or 'no code returned'}")
 
     resp = requests.post(TOKEN, data={
         "code": _code,
+        "code_verifier": _verifier,
         "client_id": client_id,
         "client_secret": client_secret,
         "redirect_uri": REDIRECT,

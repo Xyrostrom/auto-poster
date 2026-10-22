@@ -16,7 +16,7 @@ import requests
 LOG = logging.getLogger("autoposter.caption")
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
-MODEL = "claude-sonnet-5"
+MODEL = os.environ.get("CAPTION_MODEL", "claude-sonnet-5-5")
 
 # Platform hard limits.
 YT_TITLE_MAX = 100
@@ -49,7 +49,7 @@ def _fallback(filename: str, context: str) -> dict:
     title = words[:80]
     caption = f"{words}.\n\nNew one up now."
     tags = ["shorts", "reels", "viral", "trending", "fyp", "explore", "video", "creator"]
-    LOG.warning("Using template caption (no ANTHROPIC_API_KEY set)")
+    LOG.warning("Using template caption")
     return {"title": title, "caption": caption, "hashtags": tags}
 
 
@@ -77,7 +77,7 @@ def generate(filename: str, context: str = "") -> dict:
             },
             json={
                 "model": MODEL,
-                "max_tokens": 800,
+                "max_tokens": 2000,
                 "messages": [
                     {
                         "role": "user",
@@ -90,31 +90,52 @@ def generate(filename: str, context: str = "") -> dict:
             timeout=90,
         )
         resp.raise_for_status()
-        text = resp.json()["content"][0]["text"]
+        text = next(b["text"] for b in resp.json()["content"] if b.get("type") == "text")
         data = _extract_json(text)
-    except (requests.RequestException, KeyError, ValueError, json.JSONDecodeError) as exc:
-        LOG.warning("Caption generation failed (%s); falling back to template", exc)
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError,
+            StopIteration) as exc:
+        # ERROR, not WARNING: a key is configured, so this is a misconfiguration
+        # (bad model id, revoked key, no credit) that would otherwise hide forever.
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        LOG.error("Caption generation failed (%s%s); falling back to template",
+                  type(exc).__name__, f" HTTP {status}" if status else "")
+        return _fallback(filename, context)
+    if not isinstance(data, dict):
+        LOG.error("Caption model returned non-object JSON; falling back to template")
         return _fallback(filename, context)
 
     # Never trust model output shape blindly.
-    title = str(data.get("title") or _slug_to_words(filename))[:YT_TITLE_MAX]
-    caption = str(data.get("caption") or title)
-    tags = [
-        re.sub(r"[^a-z0-9]", "", str(t).lower().lstrip("#"))
-        for t in data.get("hashtags", [])
-    ]
+    title = _clean(str(data.get("title") or _slug_to_words(filename)))[:YT_TITLE_MAX]
+    caption = _clean(str(data.get("caption") or title))
+    raw_tags = data.get("hashtags", [])
+    if not isinstance(raw_tags, list):
+        raw_tags = []
+    tags = [re.sub(r"[^a-z0-9]", "", str(t).lower().lstrip("#")) for t in raw_tags]
     tags = [t for t in tags if t and not t.isdigit()][:10]
 
-    return {"title": title, "caption": caption, "hashtags": tags}
+    return {"title": title or "New video", "caption": caption, "hashtags": tags}
+
+
+def _clean(text: str) -> str:
+    # YouTube rejects titles/descriptions containing '<' or '>' (400 invalidTitle).
+    return text.replace("<", "").replace(">", "").strip()
+
+
+def _join_within(caption: str, hashtags: list[str], limit: int) -> str:
+    """caption + tag line, dropping whole tags (never cutting one in half)."""
+    tags = list(hashtags)
+    while True:
+        tagline = " ".join(f"#{t}" for t in tags)
+        full = f"{caption}\n\n{tagline}".strip()
+        if len(full) <= limit or not tags:
+            return full[:limit]
+        tags.pop()
 
 
 def compose_ig(caption: str, hashtags: list[str]) -> str:
-    tagline = " ".join(f"#{t}" for t in hashtags)
-    full = f"{caption}\n\n{tagline}".strip()
-    return full[:IG_CAPTION_MAX]
+    return _join_within(caption, hashtags, IG_CAPTION_MAX)
 
 
 def compose_yt_description(caption: str, hashtags: list[str]) -> str:
-    tagline = " ".join(f"#{t}" for t in hashtags[:3])  # YT shows first 3 above title
-    full = f"{caption}\n\n{tagline}".strip()
-    return full[:YT_DESC_MAX]
+    # YT shows the first 3 hashtags above the title.
+    return _join_within(_clean(caption), hashtags[:3], YT_DESC_MAX)
