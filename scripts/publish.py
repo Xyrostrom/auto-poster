@@ -130,15 +130,6 @@ def main() -> int:
 
     LOG.info("Selected: %s (%s)", target["name"], target["id"])
 
-    meta = caption_mod.generate(target["name"], niche)
-    LOG.info("Title:   %s", meta["title"])
-    LOG.info("Caption: %s", meta["caption"].replace("\n", " ")[:120])
-    LOG.info("Tags:    %s", " ".join("#" + t for t in meta["hashtags"]))
-
-    if args.dry_run:
-        LOG.info("Dry run complete; nothing uploaded and state left untouched.")
-        return 0
-
     record = state["posted"].setdefault(
         target["id"], {"name": target["name"], "platforms": {}}
     )
@@ -160,10 +151,22 @@ def main() -> int:
             # Count it as an attempt everywhere so an undownloadable file
             # cannot block the queue forever.
             LOG.error("Download failed: %s", _scrub(e))
+            if args.dry_run:
+                return 1
             for p in pending:
                 _record_failure(plat, p, e, now)
             save_state(state)
             return 1
+
+        # Caption from the downloaded video itself, not just its filename.
+        meta = caption_mod.generate(target["name"], niche, video=local)
+        LOG.info("Title:   %s", meta["title"])
+        LOG.info("Caption: %s", meta["caption"].replace("\n", " | ")[:300])
+        LOG.info("Tags:    %s", " ".join("#" + t for t in meta["hashtags"]))
+
+        if args.dry_run:
+            LOG.info("Dry run complete; nothing uploaded and state left untouched.")
+            return 0
 
         if "youtube" in pending:
             try:
@@ -174,7 +177,7 @@ def main() -> int:
                     description=caption_mod.compose_yt_description(
                         meta["caption"], meta["hashtags"]
                     ),
-                    tags=meta["hashtags"],
+                    tags=caption_mod._fit_keywords(meta.get("keywords", []) + meta["hashtags"]),
                     privacy=env("YT_PRIVACY", required=False, default="public"),
                 )
                 plat["youtube"] = {"ok": True, "id": vid, "at": now,
