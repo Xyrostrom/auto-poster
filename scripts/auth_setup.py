@@ -25,7 +25,8 @@ PORT = 8765
 REDIRECT = f"http://127.0.0.1:{PORT}/"
 
 SCOPES = [
-    "https://www.googleapis.com/auth/drive.readonly",
+    # Full Drive (not readonly): the source video is deleted after a successful post.
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/youtube.upload",
 ]
 

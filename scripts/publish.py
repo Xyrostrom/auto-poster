@@ -20,6 +20,7 @@ import caption as caption_mod
 import post_instagram
 import post_youtube
 from common import (
+    delete_drive_file,
     download_drive_file,
     env,
     google_access_token,
@@ -228,6 +229,17 @@ def main() -> int:
         LOG.error("Completed with failures on: %s", ", ".join(failures))
         return 1
     LOG.info("Done. Posted '%s' to %s", target["name"], ", ".join(platforms))
+
+    # Every enabled platform succeeded: delete the source so it can never be
+    # picked again. Best effort -- state/posted.json already prevents a repost,
+    # so a failed delete is logged but does not fail the run.
+    try:
+        delete_drive_file(token, target["id"])
+        record["deleted_from_drive"] = now
+        save_state(state)
+        LOG.info("Deleted '%s' from Drive", target["name"])
+    except (SystemExit, Exception) as e:
+        LOG.warning("Could not delete '%s' from Drive: %s", target["name"], _scrub(e))
     return 0
 
 

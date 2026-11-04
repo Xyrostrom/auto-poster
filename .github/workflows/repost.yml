@@ -63,7 +63,8 @@ jobs:
           STAGING_TOKEN: ${{ secrets.STAGING_TOKEN }}
           # Inputs go through env, never interpolated into the shell below --
           # `${{ }}` inside `run:` is a script-injection sink.
-          PLATFORMS: ${{ inputs.platforms || 'youtube,instagram' }}
+          # vars.PLATFORMS lets scheduled runs skip a platform that isn't set up yet.
+          PLATFORMS: ${{ inputs.platforms || vars.PLATFORMS || 'youtube,instagram' }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
           args=(--platforms "$PLATFORMS")

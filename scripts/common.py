@@ -172,6 +172,20 @@ def list_drive_videos(token: str, folder_id: str) -> list[dict[str, Any]]:
     return videos
 
 
+def delete_drive_file(token: str, file_id: str) -> None:
+    """Permanently delete a Drive file (skips Trash). Needs the full drive scope
+    and only works on files the signed-in account owns."""
+    resp = http.delete(
+        f"{DRIVE_API}/files/{file_id}",
+        headers=gheaders(token),
+        params={"supportsAllDrives": "true"},
+        timeout=60,
+    )
+    # 404: already gone (e.g. a retry after the delete went through) -- fine.
+    if resp.status_code not in (204, 404):
+        raise SystemExit(f"Drive delete failed ({resp.status_code}): {resp.text[:400]}")
+
+
 def download_drive_file(token: str, file_id: str, dest: pathlib.Path,
                         root: pathlib.Path | None = None) -> pathlib.Path:
     """Stream a Drive file to disk. Streams so a 500MB video never lands in RAM."""
