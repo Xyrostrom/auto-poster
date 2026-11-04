@@ -163,6 +163,7 @@ def main() -> int:
         LOG.info("Title:   %s", meta["title"])
         LOG.info("Caption: %s", meta["caption"].replace("\n", " | ")[:300])
         LOG.info("Tags:    %s", " ".join("#" + t for t in meta["hashtags"]))
+        LOG.info("YouTube: category %s, language %s", meta.get("category"), meta.get("language"))
 
         if args.dry_run:
             LOG.info("Dry run complete; nothing uploaded and state left untouched.")
@@ -179,6 +180,8 @@ def main() -> int:
                     ),
                     tags=caption_mod._fit_keywords(meta.get("keywords", []) + meta["hashtags"]),
                     privacy=env("YT_PRIVACY", required=False, default="public"),
+                    category_id=meta.get("category") or caption_mod.DEFAULT_CATEGORY,
+                    language=meta.get("language") or "en",
                 )
                 plat["youtube"] = {"ok": True, "id": vid, "at": now,
                                    "url": f"https://youtu.be/{vid}"}

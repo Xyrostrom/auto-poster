@@ -67,10 +67,55 @@ Write copy designed to maximise views, watch time, likes, comments and shares, W
    shows just 3 by the title.
 4. "keywords": 8-15 search phrases (plain text, no '#') a viewer might type to find this video,
    including common spellings and Hindi/Hinglish variants where relevant. These go in the YouTube tags field.
+5. "category": the ONE YouTube category whose viewers are most likely to watch and like this video, chosen
+   by what the video is about (a cricket crowd clip is Sports, not People & Blogs). One of:
+   Sports, Entertainment, Comedy, Music, Gaming, Education, Howto & Style, News & Politics,
+   Travel & Events, Autos & Vehicles, Pets & Animals, Film & Animation, Science & Technology, People & Blogs.
+6. "language": ISO 639-1 code of the spoken/on-screen language ("hi" for Hindi/Hinglish, "en" if none).
 
 Write in the same language as any speech/on-screen text in the video (English if none).
 Return ONLY valid JSON, no markdown fence:
-{{"title": "...", "caption": "...", "hashtags": ["t1", "t2", "t3", "t4", "t5"], "keywords": ["...", "..."]}}"""
+{{"title": "...", "caption": "...", "hashtags": ["t1", "t2", "t3", "t4", "t5"], "keywords": ["...", "..."], "category": "...", "language": "en"}}"""
+
+# YouTube category name -> categoryId (regionCode IN/US, assignable categories).
+CATEGORIES = {
+    "film & animation": "1", "autos & vehicles": "2", "music": "10", "pets & animals": "15",
+    "sports": "17", "travel & events": "19", "gaming": "20", "people & blogs": "22",
+    "comedy": "23", "entertainment": "24", "news & politics": "25", "howto & style": "26",
+    "education": "27", "science & technology": "28",
+}
+# Used when the model is unavailable or answers with something unknown: the first
+# group whose words appear in the filename/context/keywords wins.
+_CATEGORY_HINTS = [
+    ("17", "cricket ipl teamindia worldcup football fifa kabaddi match stadium wicket sixer goal tennis badminton wwe ufc sport"),
+    ("20", "gaming gameplay bgmi pubg freefire minecraft valorant gta fortnite"),
+    ("10", "song music lyrics cover remix dance singing concert rap"),
+    ("23", "comedy funny standup prank meme roast samay"),
+    ("26", "recipe cooking makeup tutorial diy howto fashion skincare"),
+    ("27", "lecture study exam upsc jee neet explained lesson course"),
+    ("15", "dog cat puppy pet animal"),
+    ("19", "travel trip vlog tour beach mountain"),
+    ("2", "car bike supercar motorcycle"),
+    ("28", "tech iphone android gadget coding ai review unboxing"),
+    ("25", "news politics election"),
+]
+DEFAULT_CATEGORY = "24"  # Entertainment: broadest audience when nothing better fits.
+
+
+def pick_category(answer: str, *texts: str) -> str:
+    cid = CATEGORIES.get(str(answer or "").strip().lower().replace(" and ", " & "))
+    if cid:
+        return cid
+    words = set(re.findall(r"[a-z0-9]+", " ".join(texts).lower()))
+    for cid, hints in _CATEGORY_HINTS:
+        if words & set(hints.split()):
+            return cid
+    return os.environ.get("YT_CATEGORY_ID") or DEFAULT_CATEGORY
+
+
+def _language(answer: str) -> str:
+    code = str(answer or "").strip().lower()
+    return code if re.fullmatch(r"[a-z]{2}", code) else "en"
 
 SEARCH_HINT = ("Before writing, you may use web search (at most twice) to identify the event/people/place shown "
                "and which specific hashtags and search phrases people use for it right now.")
@@ -150,7 +195,8 @@ def _fallback(filename: str, context: str) -> dict:
     tags = [re.sub(r"[^a-z0-9]", "", w.lower()) for w in topic.split()] if topic else []
     tags = list(dict.fromkeys(t for t in tags if t))[:MAX_HASHTAGS]
     LOG.warning("Using template caption (no ANTHROPIC_API_KEY or model call failed)")
-    return {"title": title, "caption": caption, "hashtags": tags, "keywords": [topic] if topic else []}
+    return {"title": title, "caption": caption, "hashtags": tags, "keywords": [topic] if topic else [],
+            "category": pick_category("", filename, topic), "language": "en"}
 
 
 def _extract_json(text: str) -> dict:
@@ -244,7 +290,9 @@ def generate(filename: str, context: str = "", video: pathlib.Path | None = None
     if not title:
         return _fallback(filename, context)
 
-    return {"title": title, "caption": caption, "hashtags": tags, "keywords": keywords}
+    category = pick_category(data.get("category"), title, caption, " ".join(tags), " ".join(keywords))
+    return {"title": title, "caption": caption, "hashtags": tags, "keywords": keywords,
+            "category": category, "language": _language(data.get("language"))}
 
 
 def _clean(text: str) -> str:

@@ -22,18 +22,30 @@ def upload(
     description: str,
     tags: list[str],
     privacy: str = "public",
-    category_id: str = "22",
+    category_id: str = "24",
+    language: str = "en",
 ) -> str:
+    # Every setting here is chosen for reach: the right category and language put
+    # the Short in front of viewers who watch that kind of video, "not made for
+    # kids" keeps comments/likes/notifications on, embedding lets it spread off
+    # YouTube, and subscribers get notified. Tags were already sized to YouTube's
+    # 500-char limit by caption._fit_keywords.
     metadata = {
         "snippet": {
             "title": title,
             "description": description,
-            "tags": tags[:15],
+            "tags": tags,
             "categoryId": category_id,
+            "defaultLanguage": language,
+            "defaultAudioLanguage": language,
         },
         "status": {
             "privacyStatus": privacy,
             "selfDeclaredMadeForKids": False,
+            "embeddable": True,
+            "publicStatsViewable": True,
+            "license": "youtube",
+            "containsSyntheticMedia": False,
         },
     }
 
@@ -48,7 +60,7 @@ def upload(
             "X-Upload-Content-Length": str(size),
             "X-Upload-Content-Type": "video/*",
         },
-        params={"uploadType": "resumable", "part": "snippet,status"},
+        params={"uploadType": "resumable", "part": "snippet,status", "notifySubscribers": "true"},
         data=json.dumps(metadata).encode("utf-8"),
         timeout=60,
     )
