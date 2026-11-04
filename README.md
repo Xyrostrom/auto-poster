@@ -101,7 +101,7 @@ Then for real:
 gh workflow run auto-post
 ```
 
-Schedule lives in `.github/workflows/repost.yml` (default 10:37 IST daily, `7 5 * * *` UTC).
+Schedule lives in `.github/workflows/repost.yml`. It posts at peak audience time: weekdays 18:17 IST (`47 12 * * 1-5` UTC), weekends 12:17 IST (`47 6 * * 0,6` UTC). GitHub may start a scheduled run up to ~1 hour late. Once the channel has viewers, check YouTube Studio → Analytics → Audience → *When your viewers are on YouTube* and adjust the times.
 
 ## State
 

@@ -2,9 +2,14 @@ name: auto-post
 
 on:
   schedule:
-    # 05:07 UTC = 10:37 IST daily. Off :00 because the top of the hour is the
-    # busiest slot on shared runners and scheduled jobs get delayed or dropped.
-    - cron: "7 5 * * *"
+    # Post when the (mostly Indian) audience is most active, so a new Short
+    # gets its first views, likes and comments fast and YouTube pushes it further.
+    # Times are set ~30-45 min before the peak because GitHub often starts
+    # scheduled jobs late. Off :00 since the top of the hour is the busiest slot.
+    # Weekdays: 12:47 UTC = 18:17 IST (evening peak, ~7-10 PM IST).
+    - cron: "47 12 * * 1-5"
+    # Weekends: 06:47 UTC = 12:17 IST (people are free from midday).
+    - cron: "47 6 * * 0,6"
   workflow_dispatch:
     inputs:
       platforms:
