@@ -190,6 +190,21 @@ The refresh token lets the program sign in as you without a password.
 
 You now have: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `DRIVE_FOLDER_ID`.
 
+### 3.7 Posting to a brand channel (e.g. @tech.nexvora), optional
+A brand channel has its own Google identity that can't see your Drive, so it needs a second token.
+1. In PowerShell, in the `auto-poster` folder:
+   ```powershell
+   python scripts/auth_setup.py --youtube
+   ```
+2. Paste the same Client ID and secret. In the browser, **pick the brand channel** (Tech Nexvora), not your own name.
+3. It prints `Channel:`, `YT_CHANNEL_ID:` and `YOUTUBE_REFRESH_TOKEN:`. Check the channel name is right.
+4. Save both in GitHub and in `.env`:
+   ```powershell
+   gh secret set YOUTUBE_REFRESH_TOKEN
+   gh variable set YT_CHANNEL_ID --body "UC...the id it printed..."
+   ```
+With `YT_CHANNEL_ID` set, the bot checks the channel before every upload and refuses to post anywhere else.
+
 ---
 
 ## Part 4: Anthropic API key (AI captions)

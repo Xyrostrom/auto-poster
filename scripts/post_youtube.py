@@ -14,6 +14,36 @@ LOG = logging.getLogger("autoposter.youtube")
 # A video is treated as a Short automatically when it is vertical and <= 3 min.
 # There is no API flag for it; #Shorts in the title/description is the only hint.
 
+CHANNELS_API = "https://www.googleapis.com/youtube/v3/channels"
+
+
+def check_channel(token: str, expected_id: str) -> None:
+    """Refuse to upload unless the token belongs to channel `expected_id`.
+
+    Needs the youtube.readonly scope (auth_setup.py --youtube asks for it).
+    """
+    resp = requests.get(
+        CHANNELS_API,
+        headers=gheaders(token),
+        params={"part": "snippet", "mine": "true"},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise SystemExit(
+            f"Could not confirm the YouTube channel ({resp.status_code}). Mint the "
+            "YouTube token with `python scripts/auth_setup.py --youtube`, or clear "
+            "YT_CHANNEL_ID to skip this check."
+        )
+    items = resp.json().get("items", [])
+    got = items[0]["id"] if items else None
+    if got != expected_id:
+        title = items[0]["snippet"].get("title") if items else "none"
+        raise SystemExit(
+            f"YouTube token is for channel {got} ({title}), not YT_CHANNEL_ID "
+            f"{expected_id}. Refusing to upload to the wrong channel."
+        )
+    LOG.info("YouTube channel confirmed: %s (%s)", items[0]["snippet"].get("title"), got)
+
 
 def upload(
     token: str,

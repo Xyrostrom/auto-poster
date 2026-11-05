@@ -28,6 +28,7 @@ from common import (
     list_drive_videos,
     load_state,
     save_state,
+    youtube_access_token,
     setup_logging,
 )
 from stage_public import PublicAsset
@@ -177,8 +178,12 @@ def main() -> int:
 
         if "youtube" in pending:
             try:
+                yt_token = youtube_access_token()
+                channel_id = env("YT_CHANNEL_ID", required=False)
+                if channel_id:
+                    post_youtube.check_channel(yt_token, channel_id)
                 vid = post_youtube.upload(
-                    token,
+                    yt_token,
                     local,
                     title=meta["title"],
                     description=caption_mod.compose_yt_description(

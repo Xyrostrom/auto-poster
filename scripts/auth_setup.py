@@ -2,10 +2,14 @@
 
 Run on your own machine (not in CI):
 
-    python scripts/auth_setup.py
+    python scripts/auth_setup.py            # Drive (+ YouTube) -> GOOGLE_REFRESH_TOKEN
+    python scripts/auth_setup.py --youtube  # YouTube only     -> YOUTUBE_REFRESH_TOKEN
+
+Use --youtube when videos should go to a brand channel (e.g. @tech.nexvora):
+on the consent screen pick that channel, not your personal account.
 
 It starts a throwaway localhost listener, opens the consent screen, and prints
-the refresh token you paste into the GOOGLE_REFRESH_TOKEN secret.
+the refresh token to store as a secret.
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import base64
 import hashlib
 import http.server
 import secrets
+import sys
 import threading
 import urllib.parse
 import webbrowser
@@ -28,6 +33,13 @@ SCOPES = [
     # Full Drive (not readonly): the source video is deleted after a successful post.
     "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/youtube.upload",
+]
+
+# --youtube: a brand channel cannot see your Drive, so it only gets YouTube
+# scopes. readonly lets the bot confirm the channel before every upload.
+YT_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
 ]
 
 _code: str | None = None
@@ -64,6 +76,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    youtube_only = "--youtube" in sys.argv[1:]
+    scopes = YT_SCOPES if youtube_only else SCOPES
+    var = "YOUTUBE_REFRESH_TOKEN" if youtube_only else "GOOGLE_REFRESH_TOKEN"
+    if youtube_only:
+        print("On the Google screen, choose the channel the videos should go to "
+              "(e.g. Tech Nexvora), not your personal account.")
     client_id = input("Google OAuth client_id: ").strip()
     client_secret = input("Google OAuth client_secret: ").strip()
 
@@ -71,7 +89,7 @@ def main() -> None:
         "client_id": client_id,
         "redirect_uri": REDIRECT,
         "response_type": "code",
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(scopes),
         "access_type": "offline",
         # Without prompt=consent Google omits refresh_token on re-authorisation.
         "prompt": "consent",

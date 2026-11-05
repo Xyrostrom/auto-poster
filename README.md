@@ -63,6 +63,7 @@ Repo → Settings → Secrets and variables → Actions.
 | `GOOGLE_CLIENT_ID` | OAuth desktop client id |
 | `GOOGLE_CLIENT_SECRET` | OAuth desktop client secret |
 | `GOOGLE_REFRESH_TOKEN` | from `auth_setup.py` |
+| `YOUTUBE_REFRESH_TOKEN` | optional, from `auth_setup.py --youtube`; uploads go to that (brand) channel |
 | `DRIVE_FOLDER_ID` | the id in the folder URL |
 | `IG_USER_ID` | IG Business account id |
 | `IG_ACCESS_TOKEN` | long-lived Graph token |
@@ -73,6 +74,7 @@ Repo → Settings → Secrets and variables → Actions.
 |---|---|
 | `STAGING_REPO` | e.g. `Xyrostrom/auto-poster-media` (must be public) |
 | `CONTENT_CONTEXT` | one line describing your niche, improves captions |
+| `YT_CHANNEL_ID` | optional; refuse to upload unless the YouTube token is for this channel |
 | `YT_PRIVACY` | `public`, `unlisted`, or `private` (default `public`) |
 
 > **YouTube API audit:** videos uploaded through the API from an *unverified*

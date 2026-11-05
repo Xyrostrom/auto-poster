@@ -103,11 +103,24 @@ def mark_posted(state: dict[str, Any], file_id: str, record: dict[str, Any]) -> 
 # google auth
 # --------------------------------------------------------------------------
 
-def google_access_token() -> str:
+def youtube_access_token() -> str:
+    """Access token for the YouTube channel that receives uploads.
+
+    A brand channel (e.g. @tech.nexvora) has its own OAuth identity with no
+    access to your personal Drive, so it gets its own refresh token
+    (YOUTUBE_REFRESH_TOKEN, minted with `auth_setup.py --youtube`). If that is
+    not set, the Drive token is used and uploads go to that account's channel.
+    """
+    if env("YOUTUBE_REFRESH_TOKEN", required=False):
+        return google_access_token("YOUTUBE_REFRESH_TOKEN")
+    return google_access_token()
+
+
+def google_access_token(refresh_var: str = "GOOGLE_REFRESH_TOKEN") -> str:
     """Exchange the long-lived refresh token for a short-lived access token.
 
-    One Google account covers both Drive (read the source folder) and
-    YouTube (upload), so a single refresh token with both scopes is enough.
+    GOOGLE_REFRESH_TOKEN covers Drive (read the source folder) and, unless
+    YOUTUBE_REFRESH_TOKEN is set, YouTube upload as well.
     """
     # Token refresh is safe to replay; connection errors are retried by `http`.
     resp = http.post(
@@ -115,7 +128,7 @@ def google_access_token() -> str:
         data={
             "client_id": env("GOOGLE_CLIENT_ID"),
             "client_secret": env("GOOGLE_CLIENT_SECRET"),
-            "refresh_token": env("GOOGLE_REFRESH_TOKEN"),
+            "refresh_token": env(refresh_var),
             "grant_type": "refresh_token",
         },
         timeout=30,
