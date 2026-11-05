@@ -35,7 +35,8 @@ Allow about **1–2 hours** the first time. Do the parts in order.
 | File | Job |
 |---|---|
 | `.github/workflows/repost.yml` | Schedule and steps GitHub runs (the "cloud computer" instructions) |
-| `scripts/publish.py` | Main program: pick → download → caption → upload → delete → record |
+| `scripts/publish.py` | Main program: pick → download → caption → strip metadata → upload → delete → record |
+| `scripts/clean_video.py` | Removes the video's hidden metadata (date, device, GPS, title, encoder) before upload |
 | `scripts/caption.py` | AI captions: frames from the video + Claude + web search, plus all caption rules |
 | `scripts/post_youtube.py` | Uploads to YouTube with the settings that help views (Part 9) |
 | `scripts/post_instagram.py` | Publishes the Reel through Instagram's API |
@@ -377,6 +378,13 @@ Set in `.github/workflows/repost.yml`:
 
 The exact instructions given to the AI are copied at the end of this guide (Appendix A).
 
+### Removing metadata before upload (`scripts/clean_video.py`)
+- Before anything is uploaded, the program makes a copy of the video **without its hidden metadata**: original title, recording date, GPS location, phone make/model, comments, encoder name, chapters, and extra tracks (cover image, subtitles, location data).
+- Picture and sound are **copied, not re-encoded**, so quality and size stay the same and it takes a second or two.
+- The same clean copy goes to YouTube and Instagram.
+- If cleaning fails, a warning is logged and the original file is uploaded, so a post is never blocked.
+- The log line `Metadata stripped (N tag(s) before, 2 after: handler_name)` confirms it worked. The 2 left are generic `VideoHandler`/`SoundHandler` labels every MP4 has.
+
 ### YouTube upload settings (`scripts/post_youtube.py`), chosen for reach
 | Setting | Value | Why |
 |---|---|---|
@@ -406,6 +414,7 @@ Posted as a **Reel** with the same caption and 5 hashtags (caption limit 2,200 c
 | Every GitHub run fails in 2–3 seconds with **startup_failure**, or "recent account payments have failed" | GitHub billing is locked. Make the repo public (Part 1), then pay the balance at https://github.com/settings/billing. Indian cards: in your bank app, turn on **international** and **online / e-commerce** transactions, or try PayPal. You can also ask https://support.github.com → Billing to waive a tiny balance. Until then, use the PC schedule (Part 8). |
 | `invalid_grant` in the log | The Google refresh token expired or was revoked. Is the app still **In production** (3.4)? Run Part 3.6 again and update `GOOGLE_REFRESH_TOKEN` in GitHub and `.env`. |
 | `Missing required environment variable: X` | Add secret or variable `X` (Part 5) or the line to `.env`. |
+| `Could not strip metadata ...; uploading the original file` | ffmpeg couldn't read the file. The post still goes out, but with the original metadata. Run `pip install -r requirements.txt` again (it installs ffmpeg). |
 | `Drive delete failed (403)` | The video isn't owned by your account. Copy it into your own folder (Part 2). |
 | `Drive folder holds 0 files` | Wrong `DRIVE_FOLDER_ID`, the videos are in a sub-folder, or the folder belongs to another account. |
 | YouTube `quotaExceeded` | The free API allows about 6 uploads a day. One a day is fine. |
