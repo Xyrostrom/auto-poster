@@ -17,6 +17,7 @@ import re
 import tempfile
 
 import caption as caption_mod
+import clean_video
 import post_instagram
 import post_youtube
 from common import (
@@ -165,6 +166,10 @@ def main() -> int:
         LOG.info("Caption: %s", meta["caption"].replace("\n", " | ")[:300])
         LOG.info("Tags:    %s", " ".join("#" + t for t in meta["hashtags"]))
         LOG.info("YouTube: category %s, language %s", meta.get("category"), meta.get("language"))
+
+        # Rule: never upload the original file's metadata (creation date,
+        # device, GPS, encoder, title...). Stream copy, so no quality loss.
+        local = clean_video.strip_metadata(local)
 
         if args.dry_run:
             LOG.info("Dry run complete; nothing uploaded and state left untouched.")
