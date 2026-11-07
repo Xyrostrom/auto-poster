@@ -78,6 +78,29 @@ jobs:
           [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
           python scripts/publish.py "${args[@]}"
 
+      # Second channel: Cricket Masti Adda, fed from its own Drive folder.
+      # Runs even if the first channel failed, so one bad day on one channel
+      # does not skip the other.
+      - name: Publish (Cricket Masti Adda)
+        if: always()
+        timeout-minutes: 35
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          DRIVE_FOLDER_ID: ${{ secrets.CRICKET_DRIVE_FOLDER_ID }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.CRICKET_YOUTUBE_REFRESH_TOKEN }}
+          YT_CHANNEL_ID: ${{ vars.CRICKET_YT_CHANNEL_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CONTENT_CONTEXT: ${{ vars.CRICKET_CONTENT_CONTEXT }}
+          YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
+          PLATFORMS: ${{ inputs.platforms || vars.PLATFORMS || 'youtube' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          args=(--platforms "$PLATFORMS")
+          [ "$DRY_RUN" = "true" ] && args+=(--dry-run)
+          python scripts/publish.py "${args[@]}"
+
       # __exit__ in stage_public.py covers the happy path, but it never runs if
       # the job is cancelled or the runner dies mid-upload -- which would leave
       # the video publicly downloadable on the staging repo indefinitely.
