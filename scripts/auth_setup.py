@@ -36,10 +36,12 @@ SCOPES = [
 ]
 
 # --youtube: a brand channel cannot see your Drive, so it only gets YouTube
-# scopes. readonly lets the bot confirm the channel before every upload.
+# scopes. readonly lets the bot confirm the channel before every upload;
+# youtube (manage) lets setup_channel.py set the description, keywords, banner.
 YT_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube",
 ]
 
 _code: str | None = None
@@ -130,8 +132,22 @@ def main() -> None:
               "https://myaccount.google.com/permissions and run this again.")
         return
 
+    if youtube_only:
+        ch = requests.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            headers={"Authorization": f"Bearer {body['access_token']}"},
+            params={"part": "snippet", "mine": "true"},
+            timeout=30,
+        )
+        items = ch.json().get("items", []) if ch.ok else []
+        if items:
+            print(f"\nChannel: {items[0]['snippet']['title']}")
+            print(f"YT_CHANNEL_ID: {items[0]['id']}")
+        else:
+            print("\nWARNING: could not read the channel for this token.")
+
     print("\n" + "=" * 60)
-    print("GOOGLE_REFRESH_TOKEN:")
+    print(f"{var}:")
     print(refresh)
     print("=" * 60)
     print("Store it as a GitHub Actions secret. Do not commit it.")
