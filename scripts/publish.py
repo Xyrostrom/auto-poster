@@ -18,6 +18,7 @@ import tempfile
 
 import caption as caption_mod
 import clean_video
+import edit_video
 import post_instagram
 import post_youtube
 from common import (
@@ -167,6 +168,10 @@ def main() -> int:
         LOG.info("Caption: %s", meta["caption"].replace("\n", " | ")[:300])
         LOG.info("Tags:    %s", " ".join("#" + t for t in meta["hashtags"]))
         LOG.info("YouTube: category %s, language %s", meta.get("category"), meta.get("language"))
+
+        # Give the clip the channel's own look (hook line, watermark, subscribe
+        # bar) so it is not a bare re-upload. Falls back to the original on error.
+        local = edit_video.edit(local, meta["title"])
 
         # Rule: never upload the original file's metadata (creation date,
         # device, GPS, encoder, title...). Stream copy, so no quality loss.

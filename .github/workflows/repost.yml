@@ -64,6 +64,8 @@ jobs:
           CONTENT_CONTEXT: ${{ vars.CONTENT_CONTEXT }}
           YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
           YT_CHANNEL_ID: ${{ vars.YT_CHANNEL_ID }}
+          EDIT_HANDLE: ${{ vars.EDIT_HANDLE }}
+          EDIT_VIDEO: ${{ vars.EDIT_VIDEO || 'true' }}
           # NOT `GH_TOKEN`: that name is auto-read by the GitHub CLI and many
           # actions, which would silently hand this PAT to any tool that shells
           # out to `gh`.
@@ -91,6 +93,8 @@ jobs:
           DRIVE_FOLDER_ID: ${{ secrets.CRICKET_DRIVE_FOLDER_ID }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.CRICKET_YOUTUBE_REFRESH_TOKEN }}
           YT_CHANNEL_ID: ${{ vars.CRICKET_YT_CHANNEL_ID }}
+          EDIT_HANDLE: ${{ vars.CRICKET_EDIT_HANDLE }}
+          EDIT_VIDEO: ${{ vars.EDIT_VIDEO || 'true' }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CONTENT_CONTEXT: ${{ vars.CRICKET_CONTENT_CONTEXT }}
           YT_PRIVACY: ${{ vars.YT_PRIVACY || 'public' }}
